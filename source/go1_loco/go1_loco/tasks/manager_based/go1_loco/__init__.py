@@ -13,11 +13,21 @@ from . import agents
 
 
 gym.register(
-    id="Template-Go1-Loco-v0",
+    id="Go1-Loco-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.go1_loco_env_cfg:Go1LocoEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
-    },
+    },  
+)
+
+gym.register(
+    id="Go1-Loco-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.go1_loco_env_cfg:Go1LocoEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+    },  
 )
