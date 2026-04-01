@@ -43,7 +43,7 @@ class Go1LocoSceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=5,
+        max_init_terrain_level=1,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -97,7 +97,7 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-math.pi, math.pi), heading=(-math.pi, math.pi)
+            lin_vel_x=(-0.5, 1.0), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-math.pi, math.pi), heading=(-math.pi, math.pi)
         ),
     )
 
@@ -153,8 +153,8 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.2, 1.25),
-            "dynamic_friction_range": (0.2, 1.25),
+            "static_friction_range": (0.8, 0.8),
+            "dynamic_friction_range": (0.6, 0.6),
             "restitution_range": (0.0, 0.0),
             "num_buckets": 64,
         },
@@ -183,12 +183,11 @@ class EventCfg:
     # reset
     base_external_force_torque = EventTerm(
         func=mdp.apply_external_force_torque,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
+        mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="trunk"),
-            "force_range": (-30, 30),
-            "torque_range": (0.0, 0.0),
+            "force_range": (0.0, 0.0),
+            "torque_range": (-0.0, 0.0),
         },
     )
 
@@ -232,10 +231,10 @@ class RewardsCfg:
 
     # -- task
     track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=mdp.track_lin_vel_xy_exp, weight=1, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
     track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
     # -- penalties
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
@@ -243,6 +242,7 @@ class RewardsCfg:
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    # last_last_action = RewTerm(func=mdp.last_last_actions, weight=-0.01)
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
         weight=0.01,
@@ -252,12 +252,16 @@ class RewardsCfg:
             "threshold": 0.5,
         },
     )
-    undesired_contacts = None
+    undesired_contacts = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*thigh", ".*calf"]), "threshold": 1.0},
+    )
     
     # -- optional penalties
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0) 
-    feet_slide = RewTerm(
+    foot_slip = RewTerm(
         func=mdp.feet_slide,
         weight=-0.1,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
@@ -273,7 +277,7 @@ class TerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="trunk"), "threshold": 1.0},
     )
-
+    
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
@@ -345,6 +349,17 @@ class Go1LocoEnvCfg(LocomotionEnvCfg):
         self.events.push_robot = None
         self.events.base_com = None
 
+        # # no height scan
+        # self.scene.height_scanner = None
+        # self.observations.policy.height_scan = None
+        # # no terrain curriculum
+        # self.curriculum.terrain_levels = None
+
+        # override rewards
+        self.rewards.flat_orientation_l2.weight = -2.5
+        self.rewards.feet_air_time.weight = 0.25
+
+        self.rewards.undesired_contacts = None
 class Go1LocoEnvCfg_PLAY(Go1LocoEnvCfg):
     def __post_init__(self):
         # post init of parent
@@ -362,7 +377,8 @@ class Go1LocoEnvCfg_PLAY(Go1LocoEnvCfg):
             self.scene.terrain.terrain_generator.num_cols = 5
             self.scene.terrain.terrain_generator.curriculum = False
 
-            
+        # # disable randomization for play
+        # self.observations.policy.enable_corruption = False
         # remove random pushing event
         self.events.base_external_force_torque = None
         self.events.push_robot = None
